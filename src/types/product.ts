@@ -6,6 +6,7 @@ export interface Product {
   image: string;
   externalLink: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ImageUploadEvent extends Event {

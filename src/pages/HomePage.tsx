@@ -8,12 +8,24 @@ import { Product } from '../types/product';
 
 const HomePage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
   
   useEffect(() => {
-    const loadedProducts = getProducts();
-    // Only show up to 4 products
-    setProducts(loadedProducts.slice(0, 4));
+    const loadProducts = async () => {
+      try {
+        setIsLoading(true);
+        const loadedProducts = await getProducts();
+        // Only show up to 4 products
+        setProducts(loadedProducts.slice(0, 4));
+      } catch (error) {
+        console.error('Error loading products:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadProducts();
     
     const handleScroll = () => {
       setShowScrollTop(window.scrollY > 300);
@@ -77,7 +89,13 @@ const HomePage: React.FC = () => {
             </a>
           </div>
           
-          {products.length > 0 ? (
+          {isLoading ? (
+            <div className="text-center py-16">
+              <p className="text-xl text-soft-gray/70">
+                Loading products...
+              </p>
+            </div>
+          ) : products.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {products.map(product => (
                 <ProductCard key={product.id} product={product} />

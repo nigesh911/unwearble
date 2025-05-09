@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { LogOut, Plus, Save, Trash2, X, Edit, Image } from 'lucide-react';
 import { logout } from '../utils/auth';
-import { addProduct, deleteProduct, getProducts, updateProduct } from '../utils/productStorage';
-import { Product, ImageUploadEvent } from '../types/product';
+import { addProduct, deleteProduct, getProducts, updateProduct, testStorageAccess } from '../utils/productStorage';
+import { Product } from '../types/product';
 
 const AdminDashboard: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   
   // Form state
@@ -20,12 +21,37 @@ const AdminDashboard: React.FC = () => {
   const [externalLink, setExternalLink] = useState('');
   
   useEffect(() => {
-    loadProducts();
+    const initialize = async () => {
+      try {
+        // Test storage access first
+        const hasStorageAccess = await testStorageAccess();
+        if (!hasStorageAccess) {
+          toast.error('Storage access failed. Please check your Supabase configuration.');
+          return;
+        }
+        
+        // Then load products
+        await loadProducts();
+      } catch (error) {
+        console.error('Initialization error:', error);
+        toast.error('Failed to initialize dashboard');
+      }
+    };
+
+    initialize();
   }, []);
   
-  const loadProducts = () => {
-    const loadedProducts = getProducts();
-    setProducts(loadedProducts);
+  const loadProducts = async () => {
+    try {
+      setIsLoading(true);
+      const loadedProducts = await getProducts();
+      setProducts(loadedProducts);
+    } catch (error) {
+      toast.error('Failed to load products');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const handleLogout = () => {
@@ -86,7 +112,7 @@ const AdminDashboard: React.FC = () => {
     reader.readAsDataURL(file);
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!name || !description || !price || !image || !externalLink) {
@@ -101,6 +127,7 @@ const AdminDashboard: React.FC = () => {
     }
     
     try {
+      setIsLoading(true);
       if (editingProduct) {
         // Update existing product
         const updatedProduct = {
@@ -112,7 +139,7 @@ const AdminDashboard: React.FC = () => {
           externalLink,
         };
         
-        updateProduct(updatedProduct);
+        await updateProduct(updatedProduct);
         toast.success('Product updated successfully');
       } else {
         // Add new product
@@ -126,22 +153,33 @@ const AdminDashboard: React.FC = () => {
           createdAt: new Date().toISOString(),
         };
         
-        addProduct(newProduct);
+        await addProduct(newProduct);
         toast.success('Product added successfully');
       }
       
-      loadProducts();
+      await loadProducts();
       closeModal();
     } catch (error) {
       toast.error('Something went wrong. Please try again.');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
     }
   };
   
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
-      deleteProduct(id);
-      toast.success('Product deleted successfully');
-      loadProducts();
+      try {
+        setIsLoading(true);
+        await deleteProduct(id);
+        toast.success('Product deleted successfully');
+        await loadProducts();
+      } catch (error) {
+        toast.error('Failed to delete product');
+        console.error(error);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
   
@@ -183,6 +221,7 @@ const AdminDashboard: React.FC = () => {
           <button 
             onClick={() => openModal()}
             className="btn btn-primary flex items-center gap-2"
+            disabled={isLoading}
           >
             <Plus size={18} />
             <span>Add Product</span>
@@ -201,7 +240,13 @@ const AdminDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {products.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-soft-gray/60">
+                    Loading...
+                  </td>
+                </tr>
+              ) : products.length > 0 ? (
                 products.map(product => (
                   <tr key={product.id} className="border-b border-soft-gray/10 hover:bg-soft-gray/5">
                     <td className="py-4 px-4">
@@ -221,6 +266,7 @@ const AdminDashboard: React.FC = () => {
                           onClick={() => openModal(product)}
                           className="text-soft-gray hover:text-acid-green p-1"
                           aria-label="Edit product"
+                          disabled={isLoading}
                         >
                           <Edit size={18} />
                         </button>
@@ -228,6 +274,7 @@ const AdminDashboard: React.FC = () => {
                           onClick={() => handleDelete(product.id)}
                           className="text-soft-gray hover:text-red-500 p-1"
                           aria-label="Delete product"
+                          disabled={isLoading}
                         >
                           <Trash2 size={18} />
                         </button>
@@ -259,6 +306,7 @@ const AdminDashboard: React.FC = () => {
                 onClick={closeModal}
                 className="text-soft-gray hover:text-acid-green"
                 aria-label="Close modal"
+                disabled={isLoading}
               >
                 <X size={20} />
               </button>
@@ -277,6 +325,7 @@ const AdminDashboard: React.FC = () => {
                   className="input w-full"
                   placeholder="Enter product name"
                   required
+                  disabled={isLoading}
                 />
               </div>
               
@@ -291,6 +340,7 @@ const AdminDashboard: React.FC = () => {
                   className="input w-full min-h-[100px]"
                   placeholder="Enter product description"
                   required
+                  disabled={isLoading}
                 />
               </div>
               
@@ -308,6 +358,7 @@ const AdminDashboard: React.FC = () => {
                   className="input w-full"
                   placeholder="Enter price"
                   required
+                  disabled={isLoading}
                 />
               </div>
               
@@ -330,6 +381,7 @@ const AdminDashboard: React.FC = () => {
                       accept="image/*"
                       onChange={handleImageUpload}
                       className="hidden"
+                      disabled={isLoading}
                     />
                     <p className="text-xs text-soft-gray/60 mt-2">
                       Maximum file size: 2MB. Supported formats: JPG, PNG, WebP
@@ -359,6 +411,7 @@ const AdminDashboard: React.FC = () => {
                   className="input w-full"
                   placeholder="https://unwearble.blinkstore.in/product/..."
                   required
+                  disabled={isLoading}
                 />
               </div>
               
@@ -367,15 +420,17 @@ const AdminDashboard: React.FC = () => {
                   type="button"
                   onClick={closeModal}
                   className="btn border border-soft-gray/30 text-soft-gray hover:border-soft-gray/60"
+                  disabled={isLoading}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary flex items-center gap-2"
+                  disabled={isLoading}
                 >
                   <Save size={18} />
-                  <span>{editingProduct ? 'Update Product' : 'Add Product'}</span>
+                  <span>{isLoading ? 'Saving...' : editingProduct ? 'Update Product' : 'Add Product'}</span>
                 </button>
               </div>
             </form>
